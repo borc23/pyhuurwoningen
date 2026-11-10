@@ -1,0 +1,58 @@
+[project]
+name = "pyhuurwoningen"
+version = "1.0.0"
+description = "Search rental homes on huurwoningen.nl"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Bor Černe", email = "borcerne.business@outlook.com" },
+]
+keywords = ["huurwoningen", "rental", "housing", "netherlands", "scraper", "education"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Typing :: Typed",
+]
+dependencies = [
+    "curl_cffi>=0.11",
+    "beautifulsoup4>=4.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/borc23/pyhuurwoningen"
+Source = "https://github.com/borc23/pyhuurwoningen"
+Issues = "https://github.com/borc23/pyhuurwoningen/issues"
+
+[project.scripts]
+huurwoningen = "pyhuurwoningen.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyhuurwoningen"]
+
+# Only these go into the source archive on PyPI (keeps out .vscode/, scratch scripts, etc.).
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "examples", "README.md", "LICENSE"]
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.26.0",
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
