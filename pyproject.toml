@@ -1,6 +1,6 @@
 [project]
 name = "pyhuurwoningen"
-version = "1.0.0"
+version = "1.0.1"
 description = "Search rental homes on huurwoningen.nl"
 readme = "README.md"
 requires-python = ">=3.10"
