@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import dataclass, field, fields
 from datetime import date, datetime
+from functools import cache
 
 
-@dataclass
+@cache
+def _field_names(cls: type) -> tuple[str, ...]:
+    return tuple(f.name for f in fields(cls))
+
+
+# slots: no per-object __dict__, so each home/sitemap entry takes less memory.
+@dataclass(slots=True)
 class Listing:
     id: str  # short id from the URL, e.g. "ea81e68d"
     url: str
@@ -21,7 +28,12 @@ class Listing:
 
     def to_dict(self) -> dict:
         """All fields as a plain dictionary."""
-        return asdict(self)
+        # Same result as dataclasses.asdict() for these flat models, without its deep copy
+        # of every value; only the one mutable field (features) is copied.
+        d = {name: getattr(self, name) for name in _field_names(type(self))}
+        if "features" in d:
+            d["features"] = dict(d["features"])
+        return d
 
     def __str__(self) -> str:
         price = f"€{self.price}/month" if self.price else "price unknown"
@@ -31,7 +43,7 @@ class Listing:
         return f"{self.title} | {price} | {area} | {rooms} | {where}"
 
 
-@dataclass
+@dataclass(slots=True)
 class ListingDetails(Listing):
     street: str | None = None
     latitude: float | None = None
@@ -60,7 +72,7 @@ class ListingDetails(Listing):
     features: dict[str, str] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(slots=True)
 class SitemapEntry:
     id: str  # short id from the URL, e.g. "ea81e68d"
     url: str
@@ -72,10 +84,10 @@ def save_csv(listings: list[Listing], path: str) -> None:
     """Save listings to a CSV file you can open in Excel, Numbers or Google Sheets."""
     if not listings:
         raise ValueError("there are no listings to save")
-    columns = [f.name for f in fields(listings[0]) if f.name != "features"]
+    columns = [name for name in _field_names(type(listings[0])) if name != "features"]
     # utf-8-sig so Excel shows "€" and "m²" correctly.
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
-        writer.writeheader()
-        for listing in listings:
-            writer.writerow(listing.to_dict())
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        # Plain Listings mixed with ListingDetails leave the extra columns empty.
+        writer.writerows([getattr(x, c, None) for c in columns] for x in listings)

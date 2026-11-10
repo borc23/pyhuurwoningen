@@ -4,17 +4,17 @@ import logging
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
-from curl_cffi import requests
-from curl_cffi.requests.exceptions import RequestException
+if TYPE_CHECKING:
+    from curl_cffi import requests
 
 log = logging.getLogger(__name__)
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
-MAX_BACKOFF = 120.0  # seconds; a server asking for longer gets an error, not a silent hang
+MAX_BACKOFF_SECONDS = 120.0
 
 
 class HuurwoningenError(Exception):
@@ -47,7 +47,12 @@ class PoliteClient:
         self.max_retries = max_retries
         self.respect_robots = respect_robots
         self.impersonate = impersonate
-        self.session = session or requests.Session(impersonate=impersonate)
+        if session is None:
+            from curl_cffi import requests
+
+            session = requests.Session(impersonate=impersonate)
+        self.session = session
+        self._netloc = urlparse(self.base_url).netloc
         headers = {"Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7"}
         if not impersonate:
             headers |= {"User-Agent": user_agent, "Accept": "text/html,application/xhtml+xml"}
@@ -57,7 +62,7 @@ class PoliteClient:
 
     def get(self, path_or_url: str, params: dict | None = None) -> requests.Response:
         url = urljoin(self.base_url, path_or_url)
-        if urlparse(url).netloc != urlparse(self.base_url).netloc:
+        if urlparse(url).netloc != self._netloc:
             raise ValueError(f"{url} is not on {self.base_url}")
         if self.respect_robots and not self._allowed(url):
             raise RobotsDisallowed(f"robots.txt does not allow scraping {url}")
@@ -68,8 +73,8 @@ class PoliteClient:
                 break
             backoff = self._retry_after(resp)
             if backoff is None:
-                backoff = min(MAX_BACKOFF, 10.0 * 2**attempt)
-            elif backoff > MAX_BACKOFF:
+                backoff = min(MAX_BACKOFF_SECONDS, 10.0 * 2**attempt)
+            elif backoff > MAX_BACKOFF_SECONDS:
                 raise HuurwoningenError(
                     f"huurwoningen.nl is busy (HTTP {resp.status_code}) and asked to wait "
                     f"{backoff / 60:.0f} minutes before trying again.",
@@ -95,6 +100,8 @@ class PoliteClient:
     # -- internals --------------------------------------------------------
 
     def _request(self, url: str, params: dict | None = None) -> requests.Response:
+        from curl_cffi.requests.exceptions import RequestException  # cached after the first call
+
         log.info("GET %s %s", url, params or "")
         try:
             return self.session.get(url, params=params, timeout=self.timeout)

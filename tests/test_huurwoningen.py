@@ -93,7 +93,7 @@ class FakeHttp:
         self.calls.append((path, params))
         if self.status >= 400:
             raise HuurwoningenError(f"HTTP {self.status}", self.status)
-        return type("Response", (), {"text": self.html})()
+        return type("Response", (), {"text": self.html, "content": self.html.encode()})()
 
     def close(self):
         pass
@@ -216,7 +216,7 @@ class PagedHttp(FakeHttp):
             f'href="/huren/rotterdam/{i}/x/">{i}</a></section>'
             for i in ids
         )
-        return type("Response", (), {"text": html})()
+        return type("Response", (), {"text": html, "content": html.encode()})()
 
 
 def test_promoted_seen_home_does_not_stop_reading():
@@ -257,13 +257,13 @@ class SiteHttp:
 
         self.calls.append(path)
         if path == "/sitemap/listings.xml":
-            return type("Response", (), {"text": SITEMAP_XML})()
+            return type("Response", (), {"text": SITEMAP_XML, "content": SITEMAP_XML.encode()})()
         listing_id = id_from_url(path)
         if listing_id in self.gone:
             raise HuurwoningenError("HTTP 404", 404)
         if listing_id in self.blocked:
             raise HuurwoningenError("HTTP 403", 403)
-        return type("Response", (), {"text": DETAIL_HTML})()
+        return type("Response", (), {"text": DETAIL_HTML, "content": DETAIL_HTML.encode()})()
 
     def close(self):
         pass

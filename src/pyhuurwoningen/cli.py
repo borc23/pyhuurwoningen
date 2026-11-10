@@ -51,29 +51,33 @@ def main(argv: list[str] | None = None) -> int:
     def show(h: Listing) -> None:
         print(json.dumps(h.to_dict(), default=str, ensure_ascii=False) if args.json else f"{h}  {h.url}", flush=True)
 
-    everything: list[Listing] = []
+    fetched: set[str] = set()  # ids read this run, for --state
     homes: list[Listing] = []
+    shown = 0
     failed = False
     try:
         with Huurwoningen() as hw:
             if args.all:
-                failed = _download(hw, args, seen, everything, show)
-                homes = filter_listings(everything, args.max_price, args.min_rooms, args.min_area)
+                # Keep matching homes only if --csv needs them: a whole-country run would
+                # otherwise hold every home's full details in memory until the end.
+                failed, shown = _download(hw, args, seen, fetched, homes if args.csv else None, show)
             else:
                 homes, everything, failed = _search(hw, args, seen)
+                fetched = {h.id for h in everything}
                 for h in homes:
                     show(h)
+                shown = len(homes)
     except (HuurwoningenError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    print(f"\n{len(homes)} home(s)", file=sys.stderr)
+    print(f"\n{shown} home(s)", file=sys.stderr)
 
     if args.csv and homes:
         save_csv(homes, str(args.csv))
         print(f"Saved to {args.csv}", file=sys.stderr)
     if args.state:
-        args.state.write_text(json.dumps(sorted(seen | {h.id for h in everything})))
+        args.state.write_text(json.dumps(sorted(seen | fetched)))
     return 1 if failed else 0  # results are saved, but let scripts notice
 
 
@@ -111,27 +115,36 @@ def _search(hw: Huurwoningen, args: argparse.Namespace, seen: set[str]) -> tuple
 
 
 def _download(
-    hw: Huurwoningen, args: argparse.Namespace, seen: set[str], everything: list[Listing], show: Callable[[Listing], None]
-) -> bool:
-    """--all: fetch every (new) home, showing each as it arrives. Returns True if stopped early.
+    hw: Huurwoningen,
+    args: argparse.Namespace,
+    seen: set[str],
+    fetched: set[str],
+    keep: list[Listing] | None,
+    show: Callable[[Listing], None],
+) -> tuple[bool, int]:
+    """--all: fetch every (new) home, showing each as it arrives.
 
-    Homes go into `everything` as they come, so a stop (error or Ctrl+C) keeps them,
-    and --state remembers them.
+    Ids go into `fetched` as homes come (so a stop by error or Ctrl+C keeps them for
+    --state), and matching homes into `keep` if given. Returns (stopped early, shown).
     """
+    shown = 0
     try:
         for home in islice(hw.download(args.city, skip_ids=seen), args.limit):
-            everything.append(home)
+            fetched.add(home.id)
             if filter_listings([home], args.max_price, args.min_rooms, args.min_area):
                 show(home)
+                shown += 1
+                if keep is not None:
+                    keep.append(home)
     except HuurwoningenError as e:
-        if not everything:
+        if not fetched:
             raise
-        print(f"Stopped after {len(everything)} home(s): {e}", file=sys.stderr)
-        return True
+        print(f"Stopped after {len(fetched)} home(s): {e}", file=sys.stderr)
+        return True, shown
     except KeyboardInterrupt:
-        print(f"\nStopped after {len(everything)} home(s); saving what we have.", file=sys.stderr)
-        return True
-    return False
+        print(f"\nStopped after {len(fetched)} home(s); saving what we have.", file=sys.stderr)
+        return True, shown
+    return False, shown
 
 
 if __name__ == "__main__":

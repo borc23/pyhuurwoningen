@@ -89,7 +89,7 @@ class Huurwoningen:
             if page > 1:
                 params["page"] = str(page)
             try:
-                html = self._http.get(f"/in/{city_slug(city)}/", params=params).text
+                html = self._http.get(f"/in/{city_slug(city)}/", params=params).content
             except HuurwoningenError as e:
                 if e.status == 404 and page > 1:
                     break  # ran past the last results page: keep what we have
@@ -98,17 +98,13 @@ class Huurwoningen:
                         f"City {city!r} not found on huurwoningen.nl.{self._city_hint(city)}", 404
                     ) from e
                 raise
-            listings = parse_search_page(html)
+            listings = parse_search_page(html)  # raw bytes: lexbor reads UTF-8 itself, no decode
             if not listings:
                 break
             for x in listings:
-                # Skip ids seen before, and ones already returned: a home posted while we
-                # wait pushes the last card of a page onto the next one.
                 if x.id not in returned and x.id not in skip:
                     returned.add(x.id)
                     found.append(x)
-            # Newest first, so once the page *ends* in a seen home, the rest are older.
-            # A seen home pinned or promoted at the top (with new ones below) doesn't stop us.
             if listings[-1].id in skip:
                 break
 
@@ -117,7 +113,7 @@ class Huurwoningen:
     def get_details(self, listing: Listing | str) -> ListingDetails:
         """Everything on a listing's own page. Pass a Listing from search(), or its URL."""
         url = listing.url if isinstance(listing, Listing) else listing
-        return parse_detail_page(self._http.get(url).text, url)
+        return parse_detail_page(self._http.get(url).content, url)
 
     def listing_index(self, city: str | None = None) -> list[SitemapEntry]:
         """Every listing on the site, or in one city: id, URL and last change, newest first.
@@ -127,7 +123,7 @@ class Huurwoningen:
         It has no price, size etc.: use download() or get_details() for those.
         """
         if self._sitemap is None or time.monotonic() - self._sitemap[0] > SITEMAP_MAX_AGE:
-            self._sitemap = (time.monotonic(), parse_sitemap(self._http.get(SITEMAP_PATH).text))
+            self._sitemap = (time.monotonic(), parse_sitemap(self._http.get(SITEMAP_PATH).content))
         entries = list(self._sitemap[1])
         if city is None:
             return entries
